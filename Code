@@ -1,0 +1,93 @@
+## Code For Prject In R programming Using Recipe Library
+library(dplyr) 
+library(randomForest) 
+library(tidyr)
+library(tree)
+library(pROC)       
+library(car)    
+library(recipes)
+setwd("C:\\Users\\LENOVO\\Desktop\\Edvancer Project\\Retail\\")
+getwd()
+
+store_train=read.csv("store_train.csv",stringsAsFactors = FALSE)
+store_test=read.csv("store_test.csv",stringsAsFactors = FALSE)
+View(store_train)
+View(store_test)
+head(store_train$storecode)
+vis_dat(store_train)
+
+
+store
+store_train$storecode <- substr(store_train$storecode, 1, nchar(store_train$storecode) - 6)
+store_test$storecode <- substr(store_test$storecode, 1, nchar(store_test$storecode) - 6)
+store_train$total_sale <- rowSums(store_train[, c("sales0", "sales1", "sales2", "sales3","sales4")])
+store_train <- store_train[, !names(store_train) %in% c("sales0", "sales1", "sales2", "sales3","sales4")]
+
+store_test$total_sale <- rowSums(store_test[, c("sales0", "sales1", "sales2", "sales3","sales4")])
+store_test <- store_test[, !names(store_test) %in% c("sales0", "sales1", "sales2", "sales3","sales4")]
+
+
+#########################
+### DATA PREPARATION  ####
+#########################
+
+
+#ID  : DROP it
+#sales0 :already in numeric
+#sales1 : already in numeric
+#sales2: already in numeric
+#sales3 :already in numeric
+#sales4: already in numeric
+#country:already in numeric
+#state: already in numeric
+#cousub: Drop it
+#storecode: Preprocess and crete dummy
+#countyname: club lower frequency and create lower frequencies
+#Areaname:club lower frequency and create lower frequencies
+#countytown:club lower frequency and create lower frequencies
+#areaname:club lower frequency and create lower frequencies
+#counttytown: club lower frequency and create lower frequencies
+#popultion: already in numeric
+#state_alpha:club lower frequency and create lower frequencies
+#store_type:club lower frequency and create lower frequencies
+#store:Target variables
+
+unique(store_train$CouSub)
+
+dp_store=recipe(store ~ .,data=store_train)%>%
+  update_role(Id,CouSub,new_role = "drop")%>%
+  update_role(total_sale,country,State,population,new_role = "numeric")%>%
+  update_role(countytownname,storecode,countyname,state_alpha,store_Type,Areaname,new_role = "to_dummy")%>%
+  step_rm(has_role("drop"))%>%
+  step_unknown(has_role("to_dummy"),new_level="__missing__") %>%
+  step_other(has_role("to_dummy"),threshold = 0.02,other = "__other__")%>%
+  step_dummy(has_role("to_dummy"))%>%
+  step_mutate_at(has_role("numeric"),fn=as.numeric)%>%
+  step_impute_median(all_numeric(),-all_outcomes())
+
+dp_store=prep(dp_store)
+
+
+glimpse(dp_store)
+
+
+train=bake(dp_store,new_data = NULL)
+test=bake(dp_store,new_data =store_test)
+
+glimpse(train)
+
+###sampling####
+
+set.seed(2)
+s=sample(1:nrow(train),0.8*nrow(train))
+t1=train[s,]
+t2=train[-s,]
+
+
+
+train$store=as.factor(train$store)
+rf_model=randomForest(store~.,data=t1)
+score=predict(rf_model,newdata= train,type="prob")[,2]
+pROC::roc(train$store,score)$auc
+
+score=predict(rf_model,newdata=test)
